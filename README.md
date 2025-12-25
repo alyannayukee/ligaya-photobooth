@@ -1,1 +1,285 @@
 # ligaya-photobooth
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ligaya Receipt Photobooth</title>
+
+<!-- Thermal Font -->
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --logo-text: "Ligaya";
+  --subtitle-text: "mga alaala";
+  --footer-text: "THANK YOU FOR THE MEMORY";
+  --border-style: dashed;
+  --font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: 'VT323', monospace;
+}
+
+body {
+  margin: 0;
+  background: black;
+  overflow: hidden;
+}
+
+/* Fullscreen kiosk */
+#kiosk {
+  width: 50vw;
+  max-width: 420px;
+  height: 100vh;
+  margin: auto;
+  background: #f4f4f4;
+  filter: grayscale(100%);
+  padding: 16px;
+}
+
+@media (max-width: 768px) {
+  #kiosk { width: 100vw; }
+}
+
+.hidden { display: none; }
+
+button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  background: black;
+  color: white;
+  border: none;
+  font-size: 18px;
+}
+
+.secondary { background: #555; }
+
+.receipt {
+  border: 2px var(--border-style) black;
+  padding: 12px;
+  background: white;
+  font-size: var(--font-size);
+}
+
+.logo {
+  text-align: center;
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.subtitle {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+video, canvas {
+  width: 100%;
+  border: 1px solid black;
+}
+
+.barcode {
+  margin-top: 10px;
+  height: 40px;
+  background: repeating-linear-gradient(
+    90deg,
+    black,
+    black 2px,
+    white 2px,
+    white 4px
+  );
+}
+
+#countdown {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  font-size: 64px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.admin-panel {
+  background: #111;
+  color: white;
+  padding: 10px;
+  font-size: 14px;
+}
+.admin-panel input {
+  width: 100%;
+  margin-bottom: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="kiosk">
+
+<!-- INTRO -->
+<div id="intro">
+  <h2 style="text-align:center">Ligaya Photobooth</h2>
+  <button onclick="goPayment()">START</button>
+  <button class="secondary" onclick="adminLogin()">ADMIN</button>
+</div>
+
+<!-- PAYMENT -->
+<div id="payment" class="hidden">
+  <p style="text-align:center">PAY ₱40</p>
+  <button onclick="startCamera()">CONFIRM PAYMENT</button>
+</div>
+
+<!-- CAPTURE -->
+<div id="capture" class="hidden">
+  <div class="receipt">
+    <div class="logo" id="logoText"></div>
+    <div class="subtitle" id="subtitleText"></div>
+    <div style="position:relative">
+      <video id="video" autoplay></video>
+      <div id="countdown" class="hidden"></div>
+    </div>
+    <p id="datetime"></p>
+    <div class="barcode"></div>
+  </div>
+  <button onclick="takePhoto()">CAPTURE</button>
+</div>
+
+<!-- PREVIEW -->
+<div id="preview" class="hidden">
+  <div class="receipt">
+    <div class="logo" id="logoText2"></div>
+    <div class="subtitle" id="subtitleText2"></div>
+    <canvas id="photo"></canvas>
+    <p id="datetime2"></p>
+    <div class="barcode"></div>
+    <p style="text-align:center" id="footerText"></p>
+  </div>
+  <button onclick="recapture()">RECAPTURE</button>
+  <button onclick="finalStep()">NEXT</button>
+</div>
+
+<!-- FINAL -->
+<div id="final" class="hidden">
+  <button onclick="download()">DOWNLOAD</button>
+  <button onclick="printPhoto()">PRINT</button>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="hidden admin-panel">
+  <h3>ADMIN MODE</h3>
+  Logo <input id="aLogo">
+  Subtitle <input id="aSub">
+  Footer <input id="aFooter">
+  Font Size <input id="aFont" type="number">
+  Border Style <input id="aBorder">
+  <button onclick="saveAdmin()">SAVE</button>
+  <button class="secondary" onclick="reset()">EXIT</button>
+</div>
+
+</div>
+
+<!-- Sounds -->
+<audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+<audio id="shutter" src="https://actions.google.com/sounds/v1/camera/camera_shutter_click_01.ogg"></audio>
+
+<script>
+const sections = ["intro","payment","capture","preview","final","admin"];
+const video = document.getElementById("video");
+const canvas = document.getElementById("photo");
+const beep = document.getElementById("beep");
+const shutter = document.getElementById("shutter");
+
+function show(id){
+  sections.forEach(s=>document.getElementById(s).classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+  applyText();
+}
+
+function goPayment(){ show("payment"); }
+
+function startCamera(){
+  show("capture");
+  navigator.mediaDevices.getUserMedia({video:true})
+    .then(s=>video.srcObject=s);
+  updateTime();
+}
+
+function updateTime(){
+  const now=new Date();
+  document.getElementById("datetime").textContent=now.toLocaleString();
+  document.getElementById("datetime2").textContent=now.toLocaleString();
+}
+
+function takePhoto(){
+  let c=3;
+  const cd=document.getElementById("countdown");
+  cd.classList.remove("hidden");
+  const i=setInterval(()=>{
+    beep.play();
+    cd.textContent=c--;
+    if(c<0){
+      clearInterval(i);
+      shutter.play();
+      cd.classList.add("hidden");
+      canvas.width=video.videoWidth;
+      canvas.height=video.videoHeight;
+      canvas.getContext("2d").drawImage(video,0,0);
+      show("preview");
+    }
+  },1000);
+}
+
+function recapture(){ show("capture"); }
+function finalStep(){ show("final"); }
+
+function download(){
+  const a=document.createElement("a");
+  a.download="ligaya.png";
+  a.href=canvas.toDataURL();
+  a.click();
+  reset();
+}
+
+function printPhoto(){
+  const w=window.open();
+  w.document.write(`<img src="${canvas.toDataURL()}" style="width:100%">`);
+  w.print();
+  w.close();
+  reset();
+}
+
+function reset(){ location.reload(); }
+
+// ADMIN
+function adminLogin(){
+  const pass=prompt("Admin password:");
+  if(pass==="ligaya123") show("admin");
+}
+
+function saveAdmin(){
+  localStorage.logo=aLogo.value;
+  localStorage.sub=aSub.value;
+  localStorage.footer=aFooter.value;
+  localStorage.font=aFont.value;
+  localStorage.border=aBorder.value;
+  reset();
+}
+
+function applyText(){
+  document.documentElement.style.setProperty("--font-size",(localStorage.font||14)+"px");
+  document.documentElement.style.setProperty("--border-style",localStorage.border||"dashed");
+  logoText.textContent=logoText2.textContent=localStorage.logo||"Ligaya";
+  subtitleText.textContent=subtitleText2.textContent=localStorage.sub||"mga alaala";
+  footerText.textContent=localStorage.footer||"THANK YOU FOR THE MEMORY";
+}
+
+applyText();
+</script>
+
+</body>
+</html>
